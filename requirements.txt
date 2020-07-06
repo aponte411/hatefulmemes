@@ -1,0 +1,10 @@
+matplotlib==3.1.1
+pandas>=0.25
+tqdm==4.47.0
+torch==1.5.0
+torchvision==0.6.0
+fasttext==0.9.1
+pytorch-lightning==0.8.4
+pandas-path==0.1.2
+Pillow==7.0.0
+pre-commit==2.6.0

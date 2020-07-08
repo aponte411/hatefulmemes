@@ -59,27 +59,34 @@ class HatefulMemesModel(pl.LightningModule):
         self.model = self._build_model()
         self.trainer_params = self._get_trainer_params()
 
-    ## Required LightningModule Methods (when validating) ##
-
+    # Required LightningModule Methods (when validating)
     def forward(
             self,
             text: torch.Tensor,
             image: torch.Tensor,
             label: Optional[torch.Tensor] = None,
     ) -> Any:
-        return self.model(text, image, label)
+        return self.model(
+            text,
+            image,
+            label,
+        )
 
     def training_step(self, batch, batch_nb) -> Dict:
-        preds, loss = self.forward(text=batch["text"],
-                                   image=batch["image"],
-                                   label=batch["label"])
+        preds, loss = self.forward(
+            text=batch["text"],
+            image=batch["image"],
+            label=batch["label"],
+        )
 
         return {"loss": loss}
 
     def validation_step(self, batch, batch_nb) -> Dict:
-        preds, loss = self.eval().forward(text=batch["text"],
-                                          image=batch["image"],
-                                          label=batch["label"])
+        preds, loss = self.eval().forward(
+            text=batch["text"],
+            image=batch["image"],
+            label=batch["label"],
+        )
 
         return {"batch_val_loss": loss}
 
@@ -90,8 +97,8 @@ class HatefulMemesModel(pl.LightningModule):
         return {
             "val_loss": avg_loss,
             "progress_bar": {
-                "avg_val_loss": avg_loss
-            }
+                "avg_val_loss": avg_loss,
+            },
         }
 
     def configure_optimizers(self) -> Tuple:
@@ -104,26 +111,30 @@ class HatefulMemesModel(pl.LightningModule):
 
     @pl.data_loader
     def train_dataloader(self) -> data.DataLoader:
-        return data.DataLoader(self.train_dataset,
-                               shuffle=True,
-                               batch_size=self.hparams.get("batch_size", 4),
-                               num_workers=self.hparams.get("num_workers", 16))
+        return data.DataLoader(
+            self.train_dataset,
+            shuffle=True,
+            batch_size=self.hparams.get("batch_size", 4),
+            num_workers=self.hparams.get("num_workers", 16),
+        )
 
     @pl.data_loader
     def val_dataloader(self) -> data.DataLoader:
-        return data.DataLoader(self.dev_dataset,
-                               shuffle=False,
-                               batch_size=self.hparams.get("batch_size", 4),
-                               num_workers=self.hparams.get("num_workers", 16))
-
-    ## Convenience Methods ##
+        return data.DataLoader(
+            self.dev_dataset,
+            shuffle=False,
+            batch_size=self.hparams.get("batch_size", 4),
+            num_workers=self.hparams.get("num_workers", 16),
+        )
 
     def fit(self) -> None:
+        """Train model."""
         self._set_seed(self.hparams.get("random_state", 42))
         self.trainer = pl.Trainer(**self.trainer_params)
         self.trainer.fit(self)
 
     def _set_seed(self, seed: int) -> None:
+        """Set random seed."""
         random.seed(seed)
         np.random.seed(seed)
         torch.manual_seed(seed)
@@ -131,6 +142,7 @@ class HatefulMemesModel(pl.LightningModule):
             torch.cuda.manual_seed_all(seed)
 
     def _build_text_transform(self) -> Any:
+        """Build text transform."""
         with tempfile.NamedTemporaryFile() as ft_training_data:
             ft_path = Path(ft_training_data.name)
             with ft_path.open("w") as ft:
@@ -143,10 +155,12 @@ class HatefulMemesModel(pl.LightningModule):
                 language_transform = fasttext.train_unsupervised(
                     str(ft_path),
                     model=self.hparams.get("fasttext_model", "cbow"),
-                    dim=self.embedding_dim)
+                    dim=self.embedding_dim,
+                )
         return language_transform
 
     def _build_image_transform(self) -> Any:
+        """Build image transform."""
         image_dim = self.hparams.get("image_dim", 224)
         image_transform = torchvision.transforms.Compose([
             torchvision.transforms.Resize(size=(image_dim, image_dim)),
@@ -160,6 +174,7 @@ class HatefulMemesModel(pl.LightningModule):
         return image_transform
 
     def _build_dataset(self, dataset_key: str) -> HatefulMemesDataset:
+        """Build HatefulMemesDataset for a given dataset."""
         return HatefulMemesDataset(
             data_path=self.hparams.get(dataset_key, dataset_key),
             img_dir=self.hparams.get("img_dir"),
@@ -175,16 +190,17 @@ class HatefulMemesModel(pl.LightningModule):
         # we're going to pass the outputs of our text
         # transform through an additional trainable layer
         # rather than fine-tuning the transform
-        language_module = nn.Linear(in_features=self.embedding_dim,
-                                    out_features=self.language_feature_dim)
+        language_module = nn.Linear(
+            in_features=self.embedding_dim,
+            out_features=self.language_feature_dim,
+        )
 
-        # easiest way to get features rather than
-        # classification is to overwrite last layer
-        # with an identity transformation, we'll reduce
-        # dimension using a Linear layer, resnet is 2048 out
+        # finetuning Resnet152, Resnet is 2048 out
         vision_module = torchvision.models.resnet152(pretrained=True)
-        vision_module.fc = nn.Linear(in_features=2048,
-                                     out_features=self.vision_feature_dim)
+        vision_module.fc = nn.Linear(
+            in_features=2048,
+            out_features=self.vision_feature_dim,
+        )
 
         return LanguageAndVisionConcat(
             num_classes=self.hparams.get("num_classes", 2),
@@ -198,11 +214,13 @@ class HatefulMemesModel(pl.LightningModule):
         )
 
     def _get_trainer_params(self) -> Dict:
+        """Get trainer params for experiment."""
         checkpoint_callback = pl.callbacks.ModelCheckpoint(
             filepath=self.output_path,
             monitor=self.hparams.get("checkpoint_monitor", "avg_val_loss"),
             mode=self.hparams.get("checkpoint_monitor_mode", "min"),
-            verbose=self.hparams.get("verbose", True))
+            verbose=self.hparams.get("verbose", True),
+        )
 
         early_stop_callback = pl.callbacks.EarlyStopping(
             monitor=self.hparams.get("early_stop_monitor", "avg_val_loss"),
@@ -229,6 +247,7 @@ class HatefulMemesModel(pl.LightningModule):
 
     @torch.no_grad()
     def make_submission_frame(self, test_path: str) -> pd.DataFrame:
+        """Conduct inference and format predictions for submission."""
         test_dataset = self._build_dataset(test_path)
         submission_frame = pd.DataFrame(index=test_dataset.samples_frame.id,
                                         columns=["proba", "label"])
@@ -236,7 +255,8 @@ class HatefulMemesModel(pl.LightningModule):
             test_dataset,
             shuffle=False,
             batch_size=self.hparams.get("batch_size", 4),
-            num_workers=self.hparams.get("num_workers", 16))
+            num_workers=self.hparams.get("num_workers", 16),
+        )
         for batch in tqdm(test_dataloader, total=len(test_dataloader)):
             preds, _ = self.model.eval().to("cpu")(batch["text"],
                                                    batch["image"])

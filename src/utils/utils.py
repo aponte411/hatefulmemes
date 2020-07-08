@@ -1,6 +1,7 @@
 import logging
 from typing import Any, Callable
 from time import time
+from functools import wraps
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s = %(message)s",

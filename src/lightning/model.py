@@ -17,7 +17,7 @@ from tqdm import tqdm
 
 from src.data.dataset import HatefulMemesDataset
 from src.models.concat import LanguageAndVisionConcat
-from utils import utils
+from src.utils import utils
 
 warnings.filterwarnings("ignore")
 LOGGER = utils.get_logger(__name__)

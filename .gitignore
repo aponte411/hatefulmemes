@@ -1,1 +1,6 @@
 __pycache__
+model-outputs
+lightning_logs
+scrap.ipynb
+.ipynb_checkpoints
+.csv

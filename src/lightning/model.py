@@ -265,4 +265,5 @@ class HatefulMemesModel(pl.LightningModule):
 
         submission_frame.proba = submission_frame.proba.astype(float)
         submission_frame.label = submission_frame.label.astype(int)
+        submission_frame.to_csv("submission.csv", index=True)
         return submission_frame

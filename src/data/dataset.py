@@ -1,5 +1,6 @@
 from typing import Any, Optional, Dict
 from PIL import Image
+import os
 
 import torch
 from torch.utils import data
@@ -39,14 +40,14 @@ class HatefulMemesDataset(data.Dataset):
                     dev_limit, random_state=random_state)
         self.samples_frame = self.samples_frame.reset_index(drop=True)
         self.samples_frame.img = self.samples_frame.apply(lambda row:
-                                                          (img_dir / row.img),
+                                                          os.path.join(img_dir, row.img),
                                                           axis=1)
 
         # https://github.com/drivendataorg/pandas-path
-        if not self.samples_frame.img.path.exists().all():
-            raise FileNotFoundError
-        if not self.samples_frame.img.path.is_file().all():
-            raise TypeError
+        #if not self.samples_frame.img.path.exists().all():
+         #   raise FileNotFoundError
+        #if not self.samples_frame.img.path.is_file().all():
+        #    raise TypeError
 
         self.image_transform = image_transform
         self.text_transform = text_transform

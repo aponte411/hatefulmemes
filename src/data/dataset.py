@@ -39,13 +39,12 @@ class HatefulMemesDataset(data.Dataset):
                 self.samples_frame = self.samples_frame.sample(
                     dev_limit, random_state=random_state)
         self.samples_frame = self.samples_frame.reset_index(drop=True)
-        self.samples_frame.img = self.samples_frame.apply(lambda row:
-                                                          os.path.join(img_dir, row.img),
-                                                          axis=1)
+        self.samples_frame.img = self.samples_frame.apply(
+            lambda row: os.path.join(img_dir, row.img), axis=1)
 
         # https://github.com/drivendataorg/pandas-path
         #if not self.samples_frame.img.path.exists().all():
-         #   raise FileNotFoundError
+        #   raise FileNotFoundError
         #if not self.samples_frame.img.path.is_file().all():
         #    raise TypeError
 
@@ -60,13 +59,19 @@ class HatefulMemesDataset(data.Dataset):
             idx = idx.tolist()
 
         img_id = self.samples_frame.loc[idx, "id"]
-
         image = Image.open(self.samples_frame.loc[idx, "img"]).convert("RGB")
         image = self.image_transform(image)
 
-        text = torch.Tensor(
-            self.text_transform.get_sentence_vector(
-                self.samples_frame.loc[idx, "text"])).squeeze()
+        inputs = self.text_transform.encode_plus(
+            self.samples_frame.loc[idx, "text"],
+            None,
+            add_special_tokens=True,
+            max_length=512,
+            pad_to_max_length=True)
+        ids = torch.Tensor(inputs["input_ids"], dtype=torch.long)
+        mask = torch.Tensor(inputs["attention_mask"], dtype=torch.long)
+        token_type_ids = torch.Tensor(inputs["token_type_ids"],
+                                      dtype=torch.long)
 
         if "label" in self.samples_frame.columns:
             label = torch.Tensor([self.samples_frame.loc[idx, "label"]
@@ -74,10 +79,18 @@ class HatefulMemesDataset(data.Dataset):
             sample = {
                 "id": img_id,
                 "image": image,
-                "text": text,
-                "label": label
+                "text_id": ids,
+                "mask": mask,
+                "token_type_ids": token_type_ids,
+                "label": label,
             }
         else:
-            sample = {"id": img_id, "image": image, "text": text}
+            sample = {
+                "id": img_id,
+                "image": image,
+                "text_id": ids,
+                "mask": mask,
+                "token_type_ids": token_type_ids,
+            }
 
         return sample

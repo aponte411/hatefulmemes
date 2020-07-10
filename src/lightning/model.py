@@ -16,7 +16,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from src.data.dataset import HatefulMemesDataset
-from src.models.concat import LanguageAndVisionConcat
+from src.models.concat import LanguageAndVisionConcat, BertBaseUncased
 from src.utils import utils
 
 warnings.filterwarnings("ignore")
@@ -50,7 +50,7 @@ class HatefulMemesModel(pl.LightningModule):
         self.output_path.mkdir(exist_ok=True)
 
         # instantiate transforms, datasets
-        self.text_transform = self._build_text_transform()
+        self.text_transform = self._build_bert_transform()
         self.image_transform = self._build_image_transform()
         self.train_dataset = self._build_dataset("train_path")
         self.dev_dataset = self._build_dataset("dev_path")
@@ -62,19 +62,25 @@ class HatefulMemesModel(pl.LightningModule):
     # Required LightningModule Methods (when validating)
     def forward(
             self,
-            text: torch.Tensor,
+            ids: torch.Tensor,
+            mask: torch.Tensor,
+            token_type_ids: torch.tensor,
             image: torch.Tensor,
             label: Optional[torch.Tensor] = None,
     ) -> Any:
         return self.model(
-            text,
+            ids,
+            mask,
+            token_type_ids,
             image,
             label,
         )
 
     def training_step(self, batch, batch_nb) -> Dict:
         preds, loss = self.forward(
-            text=batch["text"],
+            ids=batch["text_id"],
+            mask=batch["mask"],
+            token_type_ids=batch["token_type_ids"],
             image=batch["image"],
             label=batch["label"],
         )
@@ -83,7 +89,9 @@ class HatefulMemesModel(pl.LightningModule):
 
     def validation_step(self, batch, batch_nb) -> Dict:
         preds, loss = self.eval().forward(
-            text=batch["text"],
+            ids=batch["text_id"],
+            mask=batch["mask"],
+            token_type_ids=batch["token_type_ids"],
             image=batch["image"],
             label=batch["label"],
         )
@@ -159,6 +167,12 @@ class HatefulMemesModel(pl.LightningModule):
                 )
         return language_transform
 
+    def _build_bert_transform(self) -> Any:
+        return transformers.BertTokenizer.from_pretrained(
+            "best-base-uncased",
+            do_lower_case=True,
+        )
+
     def _build_image_transform(self) -> Any:
         """Build image transform."""
         image_dim = self.hparams.get("image_dim", 224)
@@ -187,13 +201,7 @@ class HatefulMemesModel(pl.LightningModule):
         )
 
     def _build_model(self) -> LanguageAndVisionConcat:
-        # we're going to pass the outputs of our text
-        # transform through an additional trainable layer
-        # rather than fine-tuning the transform
-        language_module = nn.Linear(
-            in_features=self.embedding_dim,
-            out_features=self.language_feature_dim,
-        )
+        language_module = BertBaseUncased(n_outputs=self.language_feature_dim)
 
         # finetuning Resnet152, Resnet is 2048 out
         vision_module = torchvision.models.resnet152(pretrained=True)

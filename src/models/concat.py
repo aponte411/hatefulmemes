@@ -24,18 +24,27 @@ class LanguageAndVisionConcat(nn.Module):
             in_features=(language_feature_dim + vision_feature_dim),
             out_features=fusion_output_size,
         )
-        self.fc = nn.Linear(in_features=fusion_output_size,
-                            out_features=num_classes)
+        self.fc = nn.Linear(
+            in_features=fusion_output_size,
+            out_features=num_classes,
+        )
         self.loss_fn = loss_fn
         self.dropout = nn.Dropout(dropout_p)
 
     def forward(
             self,
-            text: torch.Tensor,
+            ids: torch.Tensor,
+            mask: torch.Tensor,
+            token_type_ids: torch.Tensor,
             image: torch.Tensor,
             label: Optional[torch.Tensor] = None,
     ) -> Tuple:
-        text_features = F.relu(self.language_module(text))
+        text_features = F.relu(
+            self.language_module(
+                ids,
+                mask,
+                token_type_ids,
+            ), )
         image_features = F.relu(self.vision_module(image))
         combined = torch.cat([text_features, image_features], dim=1)
         fused = self.dropout(F.relu(self.fusion(combined)))

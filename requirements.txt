@@ -3,6 +3,7 @@ pandas>=0.25
 tqdm==4.47.0
 torch==1.5.0
 torchvision==0.6.0
+transformers==2.3.0
 fasttext==0.9.1
 pytorch-lightning==0.8.4
 pandas-path==0.1.2

@@ -63,10 +63,9 @@ class HatefulMemesDataset(data.Dataset):
             max_length=512,
             pad_to_max_length=True,
         )
-        ids = torch.Tensor(inputs["input_ids"], dtype=torch.long)
-        mask = torch.Tensor(inputs["attention_mask"], dtype=torch.long)
-        token_type_ids = torch.Tensor(inputs["token_type_ids"],
-                                      dtype=torch.long)
+        ids = torch.tensor(inputs["input_ids"], dtype=torch.long)
+        mask = torch.tensor(inputs["attention_mask"], dtype=torch.long)
+        token_type_ids = torch.tensor(inputs["token_type_ids"], dtype=torch.long)
 
         if "label" in self.samples_frame.columns:
             label = torch.Tensor([self.samples_frame.loc[idx, "label"]

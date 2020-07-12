@@ -64,8 +64,8 @@ class HatefulMemesModel(pl.LightningModule):
     # Required LightningModule Methods (when validating)
     def forward(
             self,
-            ids: torch.Tensor,
-            mask: torch.Tensor,
+            ids: torch.tensor,
+            mask: torch.tensor,
             token_type_ids: torch.tensor,
             image: torch.Tensor,
             label: Optional[torch.Tensor] = None,

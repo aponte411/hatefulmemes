@@ -42,12 +42,6 @@ class HatefulMemesDataset(data.Dataset):
         self.samples_frame.img = self.samples_frame.apply(
             lambda row: os.path.join(img_dir, row.img), axis=1)
 
-        # https://github.com/drivendataorg/pandas-path
-        #if not self.samples_frame.img.path.exists().all():
-        #   raise FileNotFoundError
-        #if not self.samples_frame.img.path.is_file().all():
-        #    raise TypeError
-
         self.image_transform = image_transform
         self.text_transform = text_transform
 
@@ -67,7 +61,8 @@ class HatefulMemesDataset(data.Dataset):
             None,
             add_special_tokens=True,
             max_length=512,
-            pad_to_max_length=True)
+            pad_to_max_length=True,
+        )
         ids = torch.Tensor(inputs["input_ids"], dtype=torch.long)
         mask = torch.Tensor(inputs["attention_mask"], dtype=torch.long)
         token_type_ids = torch.Tensor(inputs["token_type_ids"],

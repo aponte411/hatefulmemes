@@ -5,7 +5,7 @@ DEV_PATH=/storage/hm_example_mmf/data/dev.jsonl
 DATA_DIR=/storage/hm_example_mmf/data
 TEST_PATH=/storage/hm_example_mmf/data/test.jsonl
 OUTPUT_PATH=model-outputs
-CHECKPOINT=model-outputs/epoch=1.ckpt
+CHECKPOINT=model-outputs/epoch=0_v0.ckpt
 PYTHONPATH=.
 
 train:

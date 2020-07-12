@@ -1,13 +1,12 @@
 from torch import nn
-import transformers
+from transformers import BertModel
 import torch
 
 
 class BertBaseUncased(nn.Module):
     def __init__(self, n_outputs: int):
         super().__init__()
-        self.bert_path = bert_path
-        self.bert = transformers.BertModel.from_pretrained("bert-base-uncased")
+        self.bert = BertModel.from_pretrained("bert-base-uncased")
         self.dropout = nn.Dropout(0.3)
         # bert base has 768 hidden dimensions
         self.out = nn.Linear(768, n_outputs)

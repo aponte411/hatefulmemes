@@ -2,7 +2,13 @@
 import torch
 import torch.nn as nn
 
-from src.utils.bert_utils import BertLayerNorm, BertEncoder, BertPooler, ACT2FN, BertOnlyMLMHead
+from src.utils.bert_utils import (
+    BertLayerNorm,
+    BertEncoder,
+    BertPooler,
+    ACT2FN,
+    BertOnlyMLMHead,
+)
 
 # todo: add this to config
 NUM_SPECIAL_WORDS = 1000
@@ -28,7 +34,7 @@ class BaseModel(nn.Module):
             module.bias.data.zero_()
 
     def forward(self, *args, **kwargs):
-        raise NotImplemented
+        raise NotImplementedError
 
 
 class VisualLinguisticBert(BaseModel):
@@ -38,13 +44,19 @@ class VisualLinguisticBert(BaseModel):
         self.config = config
 
         # embeddings
-        self.word_embeddings = nn.Embedding(config.vocab_size,
-                                            config.hidden_size)
+        self.word_embeddings = nn.Embedding(
+            config.vocab_size,
+            config.hidden_size,
+        )
         self.end_embedding = nn.Embedding(1, config.hidden_size)
-        self.position_embeddings = nn.Embedding(config.max_position_embeddings,
-                                                config.hidden_size)
-        self.token_type_embeddings = nn.Embedding(config.type_vocab_size,
-                                                  config.hidden_size)
+        self.position_embeddings = nn.Embedding(
+            config.max_position_embeddings,
+            config.hidden_size,
+        )
+        self.token_type_embeddings = nn.Embedding(
+            config.type_vocab_size,
+            config.hidden_size,
+        )
         self.embedding_LayerNorm = BertLayerNorm(config.hidden_size, eps=1e-12)
         self.embedding_dropout = nn.Dropout(config.hidden_dropout_prob)
 
@@ -55,22 +67,35 @@ class VisualLinguisticBert(BaseModel):
         self.visual_1x1_text = None
         self.visual_1x1_object = None
         if config.visual_size != config.hidden_size:
-            self.visual_1x1_text = nn.Linear(config.visual_size,
-                                             config.hidden_size)
-            self.visual_1x1_object = nn.Linear(config.visual_size,
-                                               config.hidden_size)
+            self.visual_1x1_text = nn.Linear(
+                config.visual_size,
+                config.hidden_size,
+            )
+            self.visual_1x1_object = nn.Linear(
+                config.visual_size,
+                config.hidden_size,
+            )
         if config.visual_ln:
-            self.visual_ln_text = BertLayerNorm(config.hidden_size, eps=1e-12)
-            self.visual_ln_object = BertLayerNorm(config.hidden_size,
-                                                  eps=1e-12)
+            self.visual_ln_text = BertLayerNorm(
+                config.hidden_size,
+                eps=1e-12,
+            )
+            self.visual_ln_object = BertLayerNorm(
+                config.hidden_size,
+                eps=1e-12,
+            )
         else:
-            visual_scale_text = nn.Parameter(torch.as_tensor(
-                self.config.visual_scale_text_init, dtype=torch.float),
-                                             requires_grad=True)
+            visual_scale_text = nn.Parameter(
+                torch.as_tensor(self.config.visual_scale_text_init,
+                                dtype=torch.float),
+                requires_grad=True,
+            )
             self.register_parameter('visual_scale_text', visual_scale_text)
-            visual_scale_object = nn.Parameter(torch.as_tensor(
-                self.config.visual_scale_object_init, dtype=torch.float),
-                                               requires_grad=True)
+            visual_scale_object = nn.Parameter(
+                torch.as_tensor(self.config.visual_scale_object_init,
+                                dtype=torch.float),
+                requires_grad=True,
+            )
             self.register_parameter('visual_scale_object', visual_scale_object)
 
         self.encoder = BertEncoder(config)
@@ -82,9 +107,9 @@ class VisualLinguisticBert(BaseModel):
         self.apply(self.init_weights)
         if config.visual_ln:
             self.visual_ln_text.weight.data.fill_(
-                self.config.visual_scale_text_init)
+                self.config.visual_scale_text_init, )
             self.visual_ln_object.weight.data.fill_(
-                self.config.visual_scale_object_init)
+                self.config.visual_scale_object_init, )
 
         # load language pretrained model
         if language_pretrained_model_path is not None:
@@ -107,21 +132,28 @@ class VisualLinguisticBert(BaseModel):
         else:
             return self.word_embeddings(input_ids)
 
-    def forward(self,
-                text_input_ids,
-                text_token_type_ids,
-                text_visual_embeddings,
-                text_mask,
-                object_vl_embeddings,
-                object_mask,
-                output_all_encoded_layers=True,
-                output_text_and_object_separately=False,
-                output_attention_probs=False):
+    def forward(
+        self,
+        text_input_ids,
+        text_token_type_ids,
+        text_visual_embeddings,
+        text_mask,
+        object_vl_embeddings,
+        object_mask,
+        output_all_encoded_layers=True,
+        output_text_and_object_separately=False,
+        output_attention_probs=False,
+    ):
 
         # get seamless concatenate embeddings and mask
         embedding_output, attention_mask, text_mask_new, object_mask_new = self.embedding(
-            text_input_ids, text_token_type_ids, text_visual_embeddings,
-            text_mask, object_vl_embeddings, object_mask)
+            text_input_ids,
+            text_token_type_ids,
+            text_visual_embeddings,
+            text_mask,
+            object_vl_embeddings,
+            object_mask,
+        )
 
         # We create a 3D attention mask from a 2D tensor mask.
         # Sizes are [batch_size, 1, 1, to_seq_length]
@@ -135,8 +167,8 @@ class VisualLinguisticBert(BaseModel):
         # positions we want to attend and -10000.0 for masked positions.
         # Since we are adding it to the raw scores before the softmax, this is
         # effectively the same as removing these entirely.
-        extended_attention_mask = extended_attention_mask.to(
-            dtype=next(self.parameters()).dtype)    # fp16 compatibility
+        extended_attention_mask = extended_attention_mask.to(dtype=next(
+            self.parameters()).dtype, )    # fp16 compatibility
         extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
         # extended_attention_mask = 1.0 - extended_attention_mask
         # extended_attention_mask[extended_attention_mask != 0] = float('-inf')
@@ -146,13 +178,15 @@ class VisualLinguisticBert(BaseModel):
                 embedding_output,
                 extended_attention_mask,
                 output_all_encoded_layers=output_all_encoded_layers,
-                output_attention_probs=output_attention_probs)
+                output_attention_probs=output_attention_probs,
+            )
         else:
             encoded_layers = self.encoder(
                 embedding_output,
                 extended_attention_mask,
                 output_all_encoded_layers=output_all_encoded_layers,
-                output_attention_probs=output_attention_probs)
+                output_attention_probs=output_attention_probs,
+            )
         sequence_output = encoded_layers[-1]
         pooled_output = self.pooler(
             sequence_output) if self.config.with_pooler else None
@@ -170,7 +204,7 @@ class VisualLinguisticBert(BaseModel):
                 encoded_layer_text = encoded_layer[:, :max_text_len]
                 encoded_layer_object = encoded_layer.new_zeros(
                     (encoded_layer.shape[0], max_object_len,
-                     encoded_layer.shape[2]))
+                     encoded_layer.shape[2]), )
                 encoded_layer_object[object_mask] = encoded_layer[
                     object_mask_new]
                 encoded_layers_text.append(encoded_layer_text)
@@ -188,18 +222,24 @@ class VisualLinguisticBert(BaseModel):
             else:
                 return encoded_layers, pooled_output
 
-    def embedding(self, text_input_ids, text_token_type_ids,
-                  text_visual_embeddings, text_mask, object_vl_embeddings,
-                  object_mask):
+    def embedding(
+        self,
+        text_input_ids,
+        text_token_type_ids,
+        text_visual_embeddings,
+        text_mask,
+        object_vl_embeddings,
+        object_mask,
+    ):
 
         text_linguistic_embedding = self.word_embeddings_wrapper(
-            text_input_ids)
+            text_input_ids, )
         if self.visual_1x1_text is not None:
             text_visual_embeddings = self.visual_1x1_text(
-                text_visual_embeddings)
+                text_visual_embeddings, )
         if self.config.visual_ln:
             text_visual_embeddings = self.visual_ln_text(
-                text_visual_embeddings)
+                text_visual_embeddings, )
         else:
             text_visual_embeddings *= self.visual_scale_text
         text_vl_embeddings = text_linguistic_embedding + text_visual_embeddings
@@ -211,7 +251,7 @@ class VisualLinguisticBert(BaseModel):
                 object_visual_embeddings)
         if self.config.visual_ln:
             object_visual_embeddings = self.visual_ln_object(
-                object_visual_embeddings)
+                object_visual_embeddings, )
         else:
             object_visual_embeddings *= self.visual_scale_object
         object_linguistic_embeddings = object_vl_embeddings[:, :, self.config.
@@ -222,21 +262,27 @@ class VisualLinguisticBert(BaseModel):
         vl_embed_size = text_vl_embeddings.size(-1)
         max_length = (text_mask.sum(1) + object_mask.sum(1)).max() + 1
         grid_ind, grid_pos = torch.meshgrid(
-            torch.arange(bs,
-                         dtype=torch.long,
-                         device=text_vl_embeddings.device),
-            torch.arange(max_length,
-                         dtype=torch.long,
-                         device=text_vl_embeddings.device))
+            torch.arange(
+                bs,
+                dtype=torch.long,
+                device=text_vl_embeddings.device,
+            ),
+            torch.arange(
+                max_length,
+                dtype=torch.long,
+                device=text_vl_embeddings.device,
+            ))
         text_end = text_mask.sum(1, keepdim=True)
         object_end = text_end + object_mask.sum(1, keepdim=True)
 
         # seamlessly concatenate visual linguistic embeddings of text and object
-        _zero_id = torch.zeros((bs, ),
-                               dtype=torch.long,
-                               device=text_vl_embeddings.device)
+        _zero_id = torch.zeros(
+            (bs, ),
+            dtype=torch.long,
+            device=text_vl_embeddings.device,
+        )
         vl_embeddings = text_vl_embeddings.new_zeros(
-            (bs, max_length, vl_embed_size))
+            (bs, max_length, vl_embed_size), )
         vl_embeddings[grid_pos < text_end] = text_vl_embeddings[text_mask]
         vl_embeddings[(grid_pos >= text_end) & (
             grid_pos < object_end)] = object_vl_embeddings[object_mask]
@@ -321,12 +367,14 @@ class VisualLinguisticBert(BaseModel):
                         ).to(
                             dtype=self.token_type_embeddings.weight.data.dtype,
                             device=self.token_type_embeddings.weight.data.
-                            device)
+                            device,
+                        )
                         self.token_type_embeddings.weight.data[2] = v[0].clone(
                         ).to(
                             dtype=self.token_type_embeddings.weight.data.dtype,
                             device=self.token_type_embeddings.weight.data.
-                            device)
+                            device,
+                        )
 
                 elif k_.startswith('LayerNorm.'):
                     k__ = k_[len('LayerNorm.'):]

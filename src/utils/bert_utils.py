@@ -19,20 +19,32 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import copy
 import json
-import logging
 import math
 import os
 import shutil
 import tarfile
 import tempfile
 import sys
+import requests
+from functools import wraps
 from io import open
 
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
+import boto3
+from botocore.exceptions import ClientError
+from tqdm import tqdm
+from hashlib import sha256
 
-logger = logging.getLogger(__name__)
+try:
+    from urllib.parse import urlparse
+except ImportError:
+    from urlparse import urlparse
+
+from src.utils import utils
+
+logger = utils.get_logger(__name__)
 
 PRETRAINED_MODEL_ARCHIVE_MAP = {
     'bert-base-uncased':
@@ -96,6 +108,69 @@ def cached_path(url_or_filename, cache_dir=None):
         raise ValueError(
             "unable to parse {} as a URL or as a local path".format(
                 url_or_filename))
+
+
+def get_from_cache(url, cache_dir=None):
+    """
+    Given a URL, look for the corresponding dataset in the local cache.
+    If it's not there, download it. Then return the path to the cached file.
+    """
+    if cache_dir is None:
+        cache_dir = PYTORCH_PRETRAINED_BERT_CACHE
+    if sys.version_info[0] == 3 and isinstance(cache_dir, Path):
+        cache_dir = str(cache_dir)
+
+    if not os.path.exists(cache_dir):
+        os.makedirs(cache_dir)
+
+    # Get eTag to add to filename, if it exists.
+    if url.startswith("s3://"):
+        etag = s3_etag(url)
+    else:
+        response = requests.head(url, allow_redirects=True)
+        if response.status_code != 200:
+            raise IOError(
+                "HEAD request failed for url {} with status code {}".format(
+                    url, response.status_code))
+        etag = response.headers.get("ETag")
+
+    filename = url_to_filename(url, etag)
+
+    # get cache path to put the file
+    cache_path = os.path.join(cache_dir, filename)
+
+    if not os.path.exists(cache_path):
+        # Download to temporary file, then copy to cache dir once finished.
+        # Otherwise you get corrupt cache entries if the download gets interrupted.
+        with tempfile.NamedTemporaryFile() as temp_file:
+            logger.info("%s not found in cache, downloading to %s", url,
+                        temp_file.name)
+
+            # GET file object
+            if url.startswith("s3://"):
+                s3_get(url, temp_file)
+            else:
+                http_get(url, temp_file)
+
+            # we are copying the file before closing it, so flush to avoid truncation
+            temp_file.flush()
+            # shutil.copyfileobj() starts at the current position, so go to the start
+            temp_file.seek(0)
+
+            logger.info("copying %s to cache at %s", temp_file.name,
+                        cache_path)
+            with open(cache_path, 'wb') as cache_file:
+                shutil.copyfileobj(temp_file, cache_file)
+
+            logger.info("creating metadata file for %s", cache_path)
+            meta = {'url': url, 'etag': etag}
+            meta_path = cache_path + '.json'
+            with open(meta_path, 'w', encoding="utf-8") as meta_file:
+                json.dump(meta, meta_file)
+
+            logger.info("removing temp file %s", temp_file.name)
+
+    return cache_path
 
 
 def load_tf_weights_in_bert(model, tf_checkpoint_path):
@@ -489,18 +564,21 @@ class BertEncoder(nn.Module):
         self.layer = nn.ModuleList(
             [copy.deepcopy(layer) for _ in range(config.num_hidden_layers)])
 
-    def forward(self,
-                hidden_states,
-                attention_mask,
-                output_all_encoded_layers=True,
-                output_attention_probs=False):
+    def forward(
+        self,
+        hidden_states,
+        attention_mask,
+        output_all_encoded_layers=True,
+        output_attention_probs=False,
+    ):
         all_encoder_layers = []
         all_attention_probs = []
         for layer_module in self.layer:
             hidden_states = layer_module(
                 hidden_states,
                 attention_mask,
-                output_attention_probs=output_attention_probs)
+                output_attention_probs=output_attention_probs,
+            )
             if output_attention_probs:
                 hidden_states, attention_probs = hidden_states
                 all_attention_probs.append(attention_probs)
@@ -517,7 +595,10 @@ class BertEncoder(nn.Module):
 class BertPooler(nn.Module):
     def __init__(self, config):
         super(BertPooler, self).__init__()
-        self.dense = nn.Linear(config.hidden_size, config.hidden_size)
+        self.dense = nn.Linear(
+            config.hidden_size,
+            config.hidden_size,
+        )
         self.activation = nn.Tanh()
 
     def forward(self, hidden_states):
@@ -1400,3 +1481,81 @@ class BertForQuestionAnswering(BertPreTrainedModel):
             return total_loss
         else:
             return start_logits, end_logits
+
+
+def s3_request(func):
+    """
+    Wrapper function for s3 requests in order to create more helpful error
+    messages.
+    """
+    @wraps(func)
+    def wrapper(url, *args, **kwargs):
+        try:
+            return func(url, *args, **kwargs)
+        except ClientError as exc:
+            if int(exc.response["Error"]["Code"]) == 404:
+                raise EnvironmentError("file {} not found".format(url))
+            else:
+                raise
+
+    return wrapper
+
+
+@s3_request
+def s3_etag(url):
+    """Check ETag on S3 object."""
+    s3_resource = boto3.resource("s3")
+    bucket_name, s3_path = split_s3_path(url)
+    s3_object = s3_resource.Object(bucket_name, s3_path)
+    return s3_object.e_tag
+
+
+@s3_request
+def s3_get(url, temp_file):
+    """Pull a file directly from S3."""
+    s3_resource = boto3.resource("s3")
+    bucket_name, s3_path = split_s3_path(url)
+    s3_resource.Bucket(bucket_name).download_fileobj(s3_path, temp_file)
+
+
+def http_get(url, temp_file):
+    req = requests.get(url, stream=True)
+    content_length = req.headers.get('Content-Length')
+    total = int(content_length) if content_length is not None else None
+    progress = tqdm(unit="B", total=total)
+    for chunk in req.iter_content(chunk_size=1024):
+        if chunk:    # filter out keep-alive new chunks
+            progress.update(len(chunk))
+            temp_file.write(chunk)
+    progress.close()
+
+
+def url_to_filename(url, etag=None):
+    """
+    Convert `url` into a hashed filename in a repeatable way.
+    If `etag` is specified, append its hash to the url's, delimited
+    by a period.
+    """
+    url_bytes = url.encode('utf-8')
+    url_hash = sha256(url_bytes)
+    filename = url_hash.hexdigest()
+
+    if etag:
+        etag_bytes = etag.encode('utf-8')
+        etag_hash = sha256(etag_bytes)
+        filename += '.' + etag_hash.hexdigest()
+
+    return filename
+
+
+def split_s3_path(url):
+    """Split a full s3 path into the bucket name and path."""
+    parsed = urlparse(url)
+    if not parsed.netloc or not parsed.path:
+        raise ValueError("bad s3 path {}".format(url))
+    bucket_name = parsed.netloc
+    s3_path = parsed.path
+    # Remove '/' at beginning of path.
+    if s3_path.startswith("/"):
+        s3_path = s3_path[1:]
+    return bucket_name, s3_path

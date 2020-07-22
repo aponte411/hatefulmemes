@@ -1,0 +1,6 @@
+data:
+    train_path: "../inputs/data/train.jsonl"
+    valid_path: "../inputs/data/dev.jsonl"
+    test_path: "../inputs/data/test.jsonl"
+    image_dir: "../inputs/data"
+

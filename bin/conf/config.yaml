@@ -1,0 +1,4 @@
+defaults:
+    - data: v1
+    - model: concat
+    - experiment: bert

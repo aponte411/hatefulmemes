@@ -4,3 +4,5 @@ lightning_logs
 scrap.ipynb
 .ipynb_checkpoints
 .csv
+outputs
+hydra-core==0.11.3
